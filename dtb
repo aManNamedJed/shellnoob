@@ -1,0 +1,78 @@
+#!/bin/bash
+if [ "$1" = "wp" ]; then
+
+	# Install Roots Bedrock and change into the project directory
+
+	echo -e "\033[33;36m Installing Bedrock via Composer into var/www/html/$2...";
+
+    composer create-project roots/bedrock /var/www/html/$2
+
+    cd ~/Development
+
+    ln -s /var/www/html/$2 ./$2
+
+    cd ./$2
+
+    # Install WP-CLI Command Line Tool to project directory
+
+    curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
+
+    # Create MySQL Database, Password, and User
+
+    PASS=`pwgen -s 40 1`
+
+    echo -e "\033[33;36m Creating MySQL Database, Password, and User...";
+
+mysql -uroot -p <<MYSQL_SCRIPT
+CREATE DATABASE $2;
+CREATE USER '$2'@'localhost' IDENTIFIED BY '$PASS';
+GRANT ALL PRIVILEGES ON $2.* TO '$2'@'localhost';
+FLUSH PRIVILEGES;
+MYSQL_SCRIPT
+
+	echo "MySQL user created.";
+	echo "MySQL Username:   $2";
+	echo "MySQL Password:   $PASS";
+	echo -e "\033[33;36mBe sure to save this information."
+
+	touch .env;
+
+	echo "DB_NAME=$2" >> ./.env;
+	echo "DB_USER=$2" >> ./.env;
+	echo "DB_PASSWORD=$PASS" >> ./.env;
+	echo "DB_HOST=localhost" >> ./.env;
+	echo "" >> ./.env;
+	echo "WP_ENV=development" >> ./.env;
+	echo "WP_HOME=http://$2.lh" >> ./.env;
+	echo "WP_SITEURL=http://$2.lh/wp" >> ./.env;
+
+	php wp-cli.phar package install aaemnnosttv/wp-cli-dotenv-command --allow-root
+
+	php wp-cli.phar dotenv salts regenerate --allow-root
+
+	# Create the file with VirtualHost configuration in /etc/apache2/site-available/
+	echo "<VirtualHost *:80>
+	        DocumentRoot /var/www/html/$2/web
+	        ServerName $2.lh
+	        <Directory /var/www/html/$2/web>
+	                Options +Indexes +FollowSymLinks +MultiViews +Includes
+	                AllowOverride All
+	                Order allow,deny
+	                allow from all
+	        </Directory>
+	</VirtualHost>" > /etc/apache2/sites-available/$2.conf
+
+	# Add the host to the hosts file
+	echo 127.0.0.1 $2.lh >> /etc/hosts
+	 
+	# Enable the site
+	a2ensite $2.conf
+
+	# Restart Apache
+	service apache2 restart
+
+	php wp-cli.phar core install --url=http://$2.lh --title=RocketWP --admin_user=$2.admin --admin_email=jamesdarrohn@gmail.com --skip-email --allow-root 
+
+	echo "Your new site is available at http://$2.lh"
+
+fi
